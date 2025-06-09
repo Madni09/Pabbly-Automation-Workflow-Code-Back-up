@@ -1,0 +1,224 @@
+function getISTDate() {
+const nowUTC = new Date();
+const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+return new Date(nowUTC.getTime() + IST_OFFSET);
+}
+
+function formatISTMonthYear() {
+const istDate = getISTDate();
+const months = ['January', 'February', 'March', 'April', 'May', 'June',
+'July', 'August', 'September', 'October', 'November', 'December'];
+return `${months[istDate.getMonth()]} ${istDate.getFullYear()}`;
+}
+
+function getWebinarSwitchDay() {
+const istDate = getISTDate();
+const currentDay = istDate.getDay();
+const currentHour = istDate.getHours();
+
+if (
+(currentDay === 0 && currentHour >= 10) || // Sunday after 10 AM
+currentDay === 1 || currentDay === 2 || // Monday or Tuesday
+(currentDay === 3 && currentHour < 20) // Wednesday before 8 PM
+) {
+return 3;
+}
+return 0;
+}
+
+function getNextWebinarDate() {
+const WEBINAR_DAY = getWebinarSwitchDay(); // 0 = Sunday, 3 = Wednesday
+const WEBINAR_HOUR_IST = WEBINAR_DAY === 0 ? 11 : 21;
+
+const IST_OFFSET_HOURS = 5;
+const IST_OFFSET_MINUTES = 30;
+
+const now = getISTDate(); // 🔄 Use IST-based current time
+
+// Convert IST webinar time to UTC
+let webinarHourUTC = (WEBINAR_HOUR_IST - IST_OFFSET_HOURS + 24) % 24;
+let webinarMinuteUTC = (60 - IST_OFFSET_MINUTES) % 60;
+if (IST_OFFSET_MINUTES > 0) webinarHourUTC = (webinarHourUTC - 1 + 24) % 24;
+
+let daysUntilWebinar = (WEBINAR_DAY - now.getDay() + 7) % 7;
+
+if (
+daysUntilWebinar === 0 &&
+(
+now.getHours() > WEBINAR_HOUR_IST ||
+(now.getHours() === WEBINAR_HOUR_IST && now.getMinutes() >= 0)
+)
+) {
+daysUntilWebinar = 7;
+}
+
+const nextWebinar = new Date(now);
+nextWebinar.setDate(now.getDate() + daysUntilWebinar);
+nextWebinar.setHours(webinarHourUTC, webinarMinuteUTC, 0, 0);
+return nextWebinar.toISOString(); // in UTC
+}
+
+function convertToDDMonthYYYY(isoDateStr) {
+const match = isoDateStr.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
+if (!match) return "No Data";
+const dateObj = new Date(match[0]);
+const options = { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' };
+const formatted = new Intl.DateTimeFormat('en-US', options).format(dateObj);
+return formatted.replace(/(\w+) (\d+),/, '$2 $1');
+}
+
+function getWebinarTimeIST() {
+const day = getWebinarSwitchDay(); // returns 0 or 3
+if (day === 0) {
+return "11:00 AM IST"; // Sunday
+} else if (day === 3) {
+return "09:00 PM IST"; // Wednesday
+} else {
+return "Time not defined";
+}
+}
+
+function getPreviousDay(isoDateStr) {
+const match = isoDateStr.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/);
+if (!match) throw new Error("Invalid date format");
+
+const dateObj = new Date(match[0]);
+dateObj.setUTCDate(dateObj.getUTCDate() - 1);
+const day = String(dateObj.getUTCDate()).padStart(2, "0");
+const month = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
+const year = dateObj.getUTCFullYear();
+return `${day}-${month}-${year}`;
+}
+
+function getCBMTag(webinarDate, type = "tag") {
+const date = new Date(webinarDate);
+const day = date.getUTCDay();
+
+const map = {
+tag: {
+3: "msg_1",
+0: "msg_1_cbm_sunday_campaign"
+},
+zoomLink: {
+3: "https://sakshibranding.com/zoomlive",
+0: "https://sakshibranding.com/masterclass-live"
+},
+whatsappGroup: {
+3: "https://sakshibranding.com/cbhwhatsappgroup",
+0: "https://sakshibranding.com/masterclass-whatsappgroup"
+},
+moosendTag: {
+3: "web wed",
+0: "web sun"
+}
+};
+
+return map[type]?.[day] || null;
+}
+
+function formatISTDateDayAndTimestamp() {
+const now = new Date();
+const istOffset = 5.5 * 60 * 60000;
+const istDate = new Date(now.getTime() + istOffset);
+
+const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const dayAbbreviation = days[istDate.getUTCDay()];
+
+const date = istDate.getUTCDate();
+const ordinal = ["th", "st", "nd", "rd"][
+((date % 100) > 3 && (date % 100) < 21) || date % 10 > 3 ? 0 : date % 10
+];
+
+const months = ['January', 'February', 'March', 'April', 'May', 'June',
+'July', 'August', 'September', 'October', 'November', 'December'];
+const month = months[istDate.getUTCMonth()];
+const year = istDate.getUTCFullYear();
+
+let hours = istDate.getUTCHours();
+const minutes = istDate.getUTCMinutes();
+const ampm = hours >= 12 ? 'PM' : 'AM';
+hours = hours % 12;
+hours = hours ? hours : 12;
+const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+
+return `${dayAbbreviation} ${date}${ordinal} ${month} ${year} ${formattedTime}`;
+}
+
+function getAiSensyReminderTime() {
+const webinarDay = getWebinarSwitchDay();
+const webinarHourIST = webinarDay === 0 ? 11 : 21;
+
+const offsetHours = webinarDay === 0 ? 14 : 6;
+const offsetMinutes = webinarDay === 0 ? 30 : 0;
+
+const now = getISTDate();
+const diff = (webinarDay - now.getDay() + 7) % 7 || 7;
+
+const webinarIST = new Date(now);
+webinarIST.setDate(now.getDate() + diff);
+webinarIST.setHours(webinarHourIST, 0, 0, 0);
+
+const reminderIST = new Date(webinarIST.getTime() - (offsetHours * 60 + offsetMinutes) * 60000);
+const reminderUTC = new Date(reminderIST.getTime() - 5.5 * 60 * 60 * 1000);
+return reminderUTC.toISOString();
+}
+
+// ✅ NEW: First reminder at 3:00 PM IST (Wed) or 8:30 PM IST (Sat)
+function getFirstReminderFormattedUTC() {
+const webinarDay = getWebinarSwitchDay(); // 0 = Sunday, 3 = Wednesday
+const now = getISTDate();
+
+let reminderIST = new Date(now);
+
+if (webinarDay === 3) {
+const daysUntilWed = (3 - now.getDay() + 7) % 7;
+reminderIST.setDate(now.getDate() + daysUntilWed);
+reminderIST.setHours(15, 0, 0, 0); // 3:00 PM IST
+} else {
+const daysUntilSat = (6 - now.getDay() + 7) % 7;
+reminderIST.setDate(now.getDate() + daysUntilSat);
+reminderIST.setHours(20, 30, 0, 0); // 8:30 PM IST
+}
+
+const reminderUTC = new Date(reminderIST.getTime() - 5.5 * 60 * 60 * 1000);
+
+const year = reminderUTC.getUTCFullYear();
+const month = String(reminderUTC.getUTCMonth() + 1).padStart(2, '0');
+const day = String(reminderUTC.getUTCDate()).padStart(2, '0');
+const hours = String(reminderUTC.getUTCHours()).padStart(2, '0');
+const minutes = String(reminderUTC.getUTCMinutes()).padStart(2, '0');
+const seconds = '00';
+
+return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+// 📦 Example usage
+const istMonthYear = formatISTMonthYear();
+const webinarSwitchDay = getWebinarSwitchDay();
+const nextWebinarISO = getNextWebinarDate();
+const nextWebinarFormatted = convertToDDMonthYYYY(nextWebinarISO);
+const webinarTime = getWebinarTimeIST();
+const previousDay = getPreviousDay(nextWebinarISO);
+const moosendTag = getCBMTag(nextWebinarISO, "moosendTag");
+const registrationDateTime = formatISTDateDayAndTimestamp();
+const aisensyCampaign = webinarSwitchDay === 0
+? "Confirmation msg 01"
+: "Confirmation msg 01";
+const aisensyReminderUTC = getAiSensyReminderTime();
+const firstReminderFormattedUTC = getFirstReminderFormattedUTC();
+
+const outputString =
+`${istMonthYear}\n` +
+`${nextWebinarISO}\n` +
+`${nextWebinarFormatted}\n` +
+`${webinarTime}\n` +
+`${previousDay}\n` +
+`${moosendTag}\n` +
+`${registrationDateTime}\n` +
+`${aisensyCampaign}\n` +
+`${aisensyReminderUTC}\n` +
+`${firstReminderFormattedUTC}`;
+
+var sentences = outputString.split('\n');
+sentences.push("https://zoom.us/j/94809215434");
+return sentences;
