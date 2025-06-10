@@ -14,6 +14,11 @@ def get_same_day_time(current_time, hour, minute):
     return current_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 def get_next_js_day_time(current_time, target_js_day, hour, minute):
+    """
+    Compute the next occurrence of the target js_day (0: Sunday, 1: Monday, etc.)
+    at the specified hour:minute. If the target day is today but the target time has passed,
+    we add 1 day (rather than 7 days) so that delays are for the very next day.
+    """
     current_js_day = (current_time.weekday() + 1) % 7  # 0: Sunday, 1: Monday, etc.
     target_time_today = current_time.replace(hour=hour, minute=minute, second=0, microsecond=0)
     days_ahead = (target_js_day - current_js_day) % 7
@@ -28,6 +33,7 @@ def get_next_js_day_time(current_time, target_js_day, hour, minute):
 def get_webinar_switch_day():
     """
     Determine which webinar branch to follow.
+
     Logic:
       - For Sunday (js_day == 0): if time >= 10am, use Wednesday branch.
       - For Monday (js_day == 1): always use Wednesday branch.
@@ -36,12 +42,13 @@ def get_webinar_switch_day():
       - All other days default to Sunday branch.
     """
     ist_now = get_ist_time()
-    current_day = ist_now.weekday()
+    current_day = ist_now.weekday()  # Monday=0, Tuesday=1, ... Sunday=6
     current_hour = ist_now.hour
     current_minute = ist_now.minute
-    js_day = (current_day + 1) % 7
+    js_day = (current_day + 1) % 7  # 0: Sunday, 1: Monday, 2: Tuesday,...
+
     if js_day == 0 and current_hour >= 10:
-        return 3
+        return 3  # Wednesday branch
     elif js_day == 1:
         return 3
     elif js_day == 2:
@@ -50,7 +57,7 @@ def get_webinar_switch_day():
         else:
             return 0
     elif js_day == 3:
-        if current_hour < 20:
+        if current_hour < 10:
             return 3
         else:
             return 0
@@ -62,11 +69,15 @@ def get_email_sequence_info():
     js_day = (ist_now.weekday() + 1) % 7
     hour = ist_now.hour
     minute = ist_now.minute
+
     webinar_day_code = get_webinar_switch_day()
+
     if webinar_day_code == 3:
         result = get_wednesday_sequence(ist_now, js_day, hour, minute)
     else:
         result = get_sunday_sequence(ist_now, js_day, hour, minute)
+
+    # If fallback (void) detected, mark webinar_day as void.
     if result['tag'] == "Void time for Engagement emails":
         webinar_day_str = "Void time for Engagement emails"
         delay_until_ist = ""
@@ -75,51 +86,57 @@ def get_email_sequence_info():
         webinar_day_str = 'Wednesday' if webinar_day_code == 3 else 'Sunday'
         delay_until_ist = result['delay_until'].strftime('%Y-%m-%d %H:%M:%S IST')
         delay_until_utc = convert_ist_to_utc(result['delay_until']).strftime('%Y-%m-%d %H:%M:%S')
+    
     result.update({
         'webinar_day': webinar_day_str,
         'registration_time_ist': ist_now.strftime('%Y-%m-%d %H:%M:%S IST'),
         'delay_until_utc': delay_until_utc,
         'delay_until_ist': delay_until_ist,
     })
+
     return result
 
 def get_wednesday_sequence(now, js_day, hour, minute):
     """
-    Wednesday branch (for registrations on Sunday to Tuesday) with these windows:
+    Wednesday branch (for registrations on Sunday to Tuesday) with the following windows:
       - If registration happens on Sunday (js_day==0) at >= 10 am OR on Monday (js_day==1) BEFORE 8 am:
-            → Tag: "Wednesday Reminder email sequence 1"
+            → Tag: "Sunday Reminder email sequence 1"
             → Delay until Monday 8:00 IST.
       - If registration happens on Monday (js_day==1) between 8:00 and 18:30:
-            → Tag: "Wednesday Reminder email sequence 2"
+            → Tag: "Sunday Reminder email sequence 2"
             → Delay until Monday 18:30 IST.
       - If registration happens on Monday (js_day==1) after 18:30 OR on Tuesday (js_day==2) BEFORE 8 am:
-            → Tag: "Wednesday Reminder email sequence 3"
+            → Tag: "Sunday Reminder email sequence 3"
             → Delay until Tuesday 8:00 IST.
       - If registration happens on Tuesday (js_day==2) between 8:00 and 18:30:
-            → Tag: "Wednesday Reminder email sequence 4"
+            → Tag: "Sunday Reminder email sequence 4"
             → Delay until Tuesday 18:30 IST.
       - Otherwise, return void.
     """
+    # Condition A
     if (js_day == 0 and hour >= 10) or (js_day == 1 and hour < 8):
         delay = get_next_js_day_time(now, 1, 8, 0) if js_day == 0 else get_same_day_time(now, 8, 0)
         return {
-            'tag': 'Wednesday Reminder email sequence 1',
+            'tag': 'wednesday reminder email sequence 1',
             'delay_until': delay
         }
+    # Condition B
     elif js_day == 1 and ((hour == 8 and minute >= 0) or (8 < hour < 18 or (hour == 18 and minute < 30))):
         return {
-            'tag': 'Wednesday Reminder email sequence 2',
+            'tag': 'wednesday reminder email sequence 2',
             'delay_until': get_same_day_time(now, 18, 30)
         }
+    # Condition C
     elif (js_day == 1 and (hour > 18 or (hour == 18 and minute >= 30))) or (js_day == 2 and hour < 8):
         delay = get_next_js_day_time(now, 2, 8, 0) if js_day == 1 else get_same_day_time(now, 8, 0)
         return {
-            'tag': 'Wednesday Reminder email sequence 3',
+            'tag': 'wednesday reminder email sequence 3',
             'delay_until': delay
         }
+    # Condition D
     elif js_day == 2 and ((hour == 8 and minute >= 0) or (8 < hour < 18 or (hour == 18 and minute < 30))):
         return {
-            'tag': 'Wednesday Reminder email sequence 4',
+            'tag': 'wednesday reminder email sequence 4',
             'delay_until': get_same_day_time(now, 18, 30)
         }
     else:
@@ -132,37 +149,41 @@ def get_sunday_sequence(now, js_day, hour, minute):
     """
     Sunday branch (for registrations on Wednesday to Sunday) with these windows:
       - If registration happens between Wednesday 10 am and Thursday 8 am:
-            → Tag: "Sunday Reminder email sequence 1"
+            → Tag: "Wednesday Reminder email sequence 1"
             → Delay until Thursday 8:00 IST.
       - If registration happens on Thursday between 8:00 and 18:30:
-            → Tag: "Sunday Reminder email sequence 2"
+            → Tag: "Wednesday Reminder email sequence 2"
             → Delay until Thursday 18:30 IST.
       - If registration happens on Thursday after 18:30 or on Friday before 8 am:
-            → Tag: "Sunday Reminder email sequence 3"
+            → Tag: "Wednesday Reminder email sequence 3"
             → Delay until Friday 8:00 IST.
       - If registration happens on Friday between 8:00 and 18:30:
-            → Tag: "Sunday Reminder email sequence 4"
+            → Tag: "Wednesday Reminder email sequence 4"
             → Delay until Friday 18:30 IST.
       - Otherwise, return void.
     """
+    # Condition A
     if (js_day == 3 and hour >= 10) or (js_day == 4 and hour < 8):
         return {
-            'tag': 'Sunday Reminder email sequence 1',
+            'tag': 'sunday reminder email sequence 1',
             'delay_until': get_next_js_day_time(now, 4, 8, 0)
         }
+    # Condition B
     elif js_day == 4 and (hour < 18 or (hour == 18 and minute < 30)):
         return {
-            'tag': 'Sunday Reminder email sequence 2',
+            'tag': 'sunday reminder email sequence 2',
             'delay_until': get_same_day_time(now, 18, 30)
         }
+    # Condition C
     elif (js_day == 4 and (hour > 18 or (hour == 18 and minute >= 30))) or (js_day == 5 and hour < 8):
         return {
-            'tag': 'Sunday Reminder email sequence 3',
+            'tag': 'sunday reminder email sequence 3',
             'delay_until': get_next_js_day_time(now, 5, 8, 0)
         }
+    # Condition D
     elif js_day == 5 and (hour < 18 or (hour == 18 and minute < 30)):
         return {
-            'tag': 'Sunday Reminder email sequence 4',
+            'tag': 'sunday reminder email sequence 4',
             'delay_until': get_same_day_time(now, 18, 30)
         }
     else:
